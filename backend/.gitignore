@@ -1,0 +1,15 @@
+/node_modules
+/storage/*
+/svga/*
+.env
+.env.*
+!.env.example
+
+# Local secrets / runtime-synced settings (do not commit)
+setting.js
+setting.local.js
+setting.js.bak
+*.local.js
+
+# Safe template to copy: cp setting.example.js setting.js
+!setting.example.js
