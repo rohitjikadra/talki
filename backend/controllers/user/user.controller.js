@@ -33,156 +33,141 @@ const deleteUserDataById = require("../../util/deleteUserDataById");
 
 //path
 const path = require("path");
+// auto-detect email vs mobile (no client loginType needed)
+const { detectIdentifier, normalizePhoneDigits, isSamePhone, resolveDialCode } = require("../../util/authIdentifier");
 
-//check the user is exists or not ( currently only email-password )
+
+//check the user is exists or not (email OR mobile via identifier)
 exports.verifyUserExistence = async (req, res) => {
   try {
-    const { identity, email, password, loginType } = req.query;
+    // Preferred: identifier (email or mobile). Fallback: email / phoneNumber for old clients.
+    const { identifier, email, phoneNumber, countryCode } = req.query;
+    const rawIdentifier = identifier || email || phoneNumber;
 
-    if (loginType === undefined) {
-      return res.status(200).json({ status: false, message: "loginType is required." });
-    }
-
-    // TEMP DISABLED: Mobile number existence check (loginType 3) — currently only email-password is enabled
-    // if (Number(loginType) === 3) {
-    //   if (!identity) {
-    //     return res.status(200).json({ status: false, message: "identity is required for loginType 3." });
-    //   }
-    //
-    //   const user = await User.findOne({ identity, loginType: 3 }).select("_id").lean();
-    //
-    //   return res.status(200).json({
-    //     status: true,
-    //     message: user ? "User login successfully." : "User must sign up.",
-    //     isLogin: !!user,
-    //   });
+    // TEMP: loginType is optional now (auto-detect). Kept for backward-compatible clients.
+    // if (loginType === undefined) {
+    //   return res.status(200).json({ status: false, message: "loginType is required." });
     // }
 
-    // ACTIVE: Email-password existence check (loginType 4)
-    if (Number(loginType) === 4) {
-      if (!email) {
-        return res.status(200).json({ status: false, message: "email required for loginType 4." });
-      }
-
-      const user = await User.findOne({ email: email.trim(), loginType: 4 });
-
-      if (user) {
-        return res.status(200).json({
-          status: true,
-          message: "User login successfully.",
-          isLogin: true,
-        });
-      } else {
-        return res.status(200).json({
-          status: true,
-          message: "User must sign up.",
-          isLogin: false,
-        });
-      }
+    const detected = detectIdentifier(rawIdentifier);
+    if (!detected.type) {
+      return res.status(200).json({ status: false, message: detected.message || "Invalid identifier." });
     }
 
-    // Only loginType 4 (email-password) is allowed for now
-    return res.status(200).json({ status: false, message: "Unsupported loginType. Only email-password (loginType 4) is enabled." });
+    let user = null;
+
+    if (detected.type === "email") {
+      user = await User.findOne({ email: detected.value }).select("_id").lean();
+    } else {
+      // Mobile: match local digits or dial+local (countryCode is ISO like "IN")
+      const phoneDigits = detected.value;
+      const dial = countryCode ? resolveDialCode(countryCode) : "";
+      const withCountry = dial ? `${dial}${phoneDigits}` : null;
+
+      user = await User.findOne({
+        $or: [{ phoneNumber: phoneDigits }, ...(withCountry ? [{ phoneNumber: withCountry }] : []), ...(phoneNumber ? [{ phoneNumber: String(phoneNumber).trim() }] : [])],
+      })
+        .select("_id")
+        .lean();
+    }
+
+    return res.status(200).json({
+      status: true,
+      message: user ? "User login successfully." : "User must sign up.",
+      isLogin: !!user,
+      loginMethod: detected.type, // "email" | "mobile" — for client info only
+    });
   } catch (error) {
     console.error("checkUser error:", error);
     return res.status(500).json({ status: false, message: error.message || "Internal Server Error" });
   }
 };
 
-//user login and sign up
+//user login and sign up (email OR mobile login; register requires BOTH email + mobile)
 exports.authenticateOrRegisterUser = async (req, res) => {
   try {
     if (!req.body) {
       return res.status(200).json({ status: false, message: "Request body is missing." });
     }
 
-    const { identity, loginType, fcmToken, email, password, countryCode, phoneNumber, nickName, fullName, profilePic, birthDate } = req.body;
+    const {
+      identity,
+      // loginType — NOT required anymore (auto-detect). Kept for old clients / legacy only.
+      loginType,
+      fcmToken,
+      identifier,
+      email,
+      password,
+      countryCode,
+      phoneNumber,
+      nickName,
+      fullName,
+      profilePic,
+      birthDate,
+    } = req.body;
 
-    if (!identity || loginType === undefined || !fcmToken) {
+    if (!identity || !fcmToken) {
       if (req.file) deleteFile(req.file);
-      return res.status(200).json({ status: false, message: "Oops! Invalid details!!" });
+      return res.status(200).json({ status: false, message: "Oops! Invalid details!! identity and fcmToken are required." });
     }
 
-    const { uid, provider } = req.user;
-    let userQuery = {};
+    if (!password) {
+      if (req.file) deleteFile(req.file);
+      return res.status(200).json({ status: false, message: "Password is required." });
+    }
 
-    // TEMP: Only email-password login (loginType 4) is enabled for now.
-    // Other login types are commented below (not deleted) so they can be re-enabled later.
-    switch (loginType) {
-      // TEMP DISABLED: Google login (loginType 1)
-      // case 1:
-      //   if (!email) {
-      //     if (req.file) deleteFile(req.file);
-      //     return res.status(200).json({ status: false, message: "Email is required." });
-      //   }
-      //   userQuery = { email: email.trim(), loginType: 1 };
-      //   break;
+    const { uid, provider, email: tokenEmail, phone: tokenPhone } = req.user;
 
-      // TEMP DISABLED: Quick/Device login (loginType 2)
-      // case 2:
-      //   if (!identity && !email) {
-      //     if (req.file) deleteFile(req.file);
-      //     return res.status(200).json({ status: false, message: "Either identity or email is required." });
-      //   }
-      //   // userQuery = {};
-      //   userQuery = { firebaseId: uid, loginType: 2 };
-      //   break;
+    // Normalize email / phone from body (used for register + optional login)
+    const bodyEmail = email ? String(email).trim().toLowerCase() : "";
+    const bodyPhoneDigits = phoneNumber ? normalizePhoneDigits(phoneNumber) : "";
+    const bodyCountryCode = countryCode ? String(countryCode).trim().toUpperCase() : "";
 
-      // TEMP DISABLED: Mobile number login (loginType 3)
-      // case 3:
-      //   if (!phoneNumber) {
-      //     if (req.file) deleteFile(req.file);
-      //     return res.status(200).json({ status: false, message: "Phone number is required." });
-      //   }
-      //   userQuery = { phoneNumber, loginType: 3 };
-      //   break;
+    // Login identifier: email OR mobile (auto-detect). Fallback to email/phoneNumber fields.
+    const rawIdentifier = identifier || email || phoneNumber;
+    const detected = detectIdentifier(rawIdentifier);
 
-      // ACTIVE: Email-password login/register (loginType 4)
-      case 4:
-        if (!email) {
-          if (req.file) deleteFile(req.file);
-          return res.status(200).json({ status: false, message: "Email is required." });
-        }
+    if (!detected.type) {
+      if (req.file) deleteFile(req.file);
+      return res.status(200).json({ status: false, message: detected.message || "Invalid identifier." });
+    }
 
-        // Password is required for email-password flow (Firebase + backend bcrypt)
-        if (!password) {
-          if (req.file) deleteFile(req.file);
-          return res.status(200).json({ status: false, message: "Password is required." });
-        }
+    // Resolve lookup contact for LOGIN
+    let lookupEmail = detected.type === "email" ? detected.value : bodyEmail;
+    let lookupPhone = detected.type === "mobile" ? detected.value : bodyPhoneDigits;
+    let lookupCountryCode = bodyCountryCode;
+    let resolvedLoginType = detected.type === "email" ? 4 : 3;
 
-        // Token email must match body email (prevent token misuse)
-        if (!req.user.email || req.user.email.toLowerCase() !== email.trim().toLowerCase()) {
-          if (req.file) deleteFile(req.file);
-          return res.status(403).json({ status: false, message: "Token email does not match request email." });
-        }
-
-        userQuery = { email: email.trim(), loginType: 4 };
-        break;
-
-      // TEMP DISABLED: Apple login (loginType 5)
-      // case 5:
-      //   if (!email) {
-      //     if (req.file) deleteFile(req.file);
-      //     return res.status(400).json({ status: false, message: "email is required for Apple login." });
-      //   }
-      //   userQuery = { email: email.trim(), loginType: 5 };
-      //   break;
-
-      default:
+    // Token must match the login method being used
+    if (detected.type === "email") {
+      if (!tokenEmail || tokenEmail.toLowerCase() !== lookupEmail) {
         if (req.file) deleteFile(req.file);
-        // Only loginType 4 is allowed right now
-        return res.status(200).json({ status: false, message: "Invalid loginType. Only email-password is enabled." });
+        return res.status(403).json({ status: false, message: "Token email does not match request email." });
+      }
+    } else {
+      if (!tokenPhone || !isSamePhone(tokenPhone, lookupCountryCode, lookupPhone)) {
+        if (req.file) deleteFile(req.file);
+        return res.status(403).json({ status: false, message: "Token phone does not match request mobile." });
+      }
     }
 
+    // Find existing user by email OR phone (one user = one password)
     let user = null;
-    if (userQuery && Object.keys(userQuery).length > 0) {
-      // Include password + firebaseId for login verification (not returned in final response)
-      user = await User.findOne(userQuery).select("_id loginType nickName fullName profilePic email password firebaseId fcmToken lastlogin isBlock isListener listenerId");
+    if (detected.type === "email") {
+      user = await User.findOne({ email: lookupEmail }).select(
+        "_id loginType nickName fullName profilePic email phoneNumber countryCode password firebaseId fcmToken lastlogin isBlock isListener listenerId",
+      );
+    } else {
+      const dial = lookupCountryCode ? resolveDialCode(lookupCountryCode) : "";
+      const withCountry = dial ? `${dial}${lookupPhone}` : null;
+      user = await User.findOne({
+        $or: [{ phoneNumber: lookupPhone }, ...(withCountry ? [{ phoneNumber: withCountry }] : []), ...(phoneNumber ? [{ phoneNumber: String(phoneNumber).trim() }] : [])],
+      }).select("_id loginType nickName fullName profilePic email phoneNumber countryCode password firebaseId fcmToken lastlogin isBlock isListener listenerId");
     }
 
+    // ===================== LOGIN =====================
     if (user) {
       if (user.firebaseId && user.firebaseId !== uid) {
-        console.log("If a user exists but firebaseId mismatch");
         console.warn(`⚠️ UID mismatch — token UID (${uid}) vs user.firebaseId (${user.firebaseId})`);
         return res.status(403).json({
           status: false,
@@ -190,17 +175,15 @@ exports.authenticateOrRegisterUser = async (req, res) => {
         });
       }
 
-      // Backend bcrypt password verify (Firebase token already verified in middleware)
-      if (loginType === 4) {
-        const { match, needsRehash } = await verifyPassword(password, user.password);
-        if (!match) {
-          return res.status(401).json({ status: false, message: "Invalid email or password." });
-        }
+      // Backend bcrypt password verify (same password for email or mobile)
+      const { match, needsRehash } = await verifyPassword(password, user.password);
+      if (!match) {
+        return res.status(401).json({ status: false, message: "Invalid credentials." });
+      }
 
-        // Lazy migration: old Cryptr password → bcrypt hash
-        if (needsRehash) {
-          user.password = await hashPassword(password);
-        }
+      // Lazy migration: old Cryptr password → bcrypt hash
+      if (needsRehash) {
+        user.password = await hashPassword(password);
       }
 
       if (user.isBlock) {
@@ -231,7 +214,6 @@ exports.authenticateOrRegisterUser = async (req, res) => {
       user.lastlogin = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
       await user.save();
 
-      // Do not send password hash to client
       const userResponse = user.toObject();
       delete userResponse.password;
       delete userResponse.firebaseId;
@@ -241,96 +223,171 @@ exports.authenticateOrRegisterUser = async (req, res) => {
         message: "User logged in.",
         user: userResponse,
         signUp: false,
+        loginMethod: detected.type,
       });
-    } else {
-      const [existingFirebaseUser, userUniqueId, historyUniqueId] = await Promise.all([User.exists({ firebaseId: uid }), generateUniqueId(), generateHistoryUniqueId()]);
+    }
 
-      if (existingFirebaseUser) {
-        return res.status(200).json({ status: false, message: "User with this Firebase ID already exists." });
-      }
+    // ===================== REGISTER =====================
+    // Compulsory: email + mobile + countryCode (same password for both login methods later)
+    if (!bodyEmail) {
+      if (req.file) deleteFile(req.file);
+      return res.status(200).json({ status: false, message: "Email is required for registration." });
+    }
 
-      const bonusCoins = settingJSON.dailyLoginBonusCoins ?? 5000;
+    const emailCheck = detectIdentifier(bodyEmail);
+    if (emailCheck.type !== "email") {
+      if (req.file) deleteFile(req.file);
+      return res.status(200).json({ status: false, message: "Invalid email format." });
+    }
 
-      // Hash password with bcrypt before saving (loginType 4)
-      const hashedPassword = password ? await hashPassword(password) : "";
+    if (!bodyPhoneDigits) {
+      if (req.file) deleteFile(req.file);
+      return res.status(200).json({ status: false, message: "Mobile number is required for registration." });
+    }
 
-      const newUser = new User({
-        loginType,
-        fullName: fullName || "",
-        nickName: nickName || "",
-        countryCode: countryCode || "",
-        phoneNumber: phoneNumber || "",
-        email: email?.trim(),
-        password: hashedPassword,
-        profilePic: req.file ? req.file.path : profilePic,
-        fcmToken,
-        identity,
-        uniqueId: userUniqueId,
-        firebaseId: uid,
-        authProvider: provider,
-        coins: bonusCoins,
-        birthDate,
-        lastlogin: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
-        date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+    if (!bodyCountryCode) {
+      if (req.file) deleteFile(req.file);
+      return res.status(200).json({ status: false, message: "countryCode is required for registration (e.g. IN)." });
+    }
+
+    const phoneCheck = detectIdentifier(bodyPhoneDigits);
+    if (phoneCheck.type !== "mobile") {
+      if (req.file) deleteFile(req.file);
+      return res.status(200).json({ status: false, message: "Invalid mobile number." });
+    }
+
+    const registerEmail = emailCheck.value;
+    const registerPhone = phoneCheck.value;
+    const registerCountryCode = bodyCountryCode; // ISO like "IN"
+    const registerDial = resolveDialCode(registerCountryCode);
+    const registerPhoneWithCountry = registerDial ? `${registerDial}${registerPhone}` : registerPhone;
+
+    if (!registerDial) {
+      if (req.file) deleteFile(req.file);
+      return res.status(200).json({ status: false, message: "Invalid countryCode. Use ISO code like IN." });
+    }
+
+    // Token must match at least one of email/phone from Firebase auth used during register
+    const emailTokenOk = tokenEmail && tokenEmail.toLowerCase() === registerEmail;
+    const phoneTokenOk = tokenPhone && isSamePhone(tokenPhone, registerCountryCode, registerPhone);
+    if (!emailTokenOk && !phoneTokenOk) {
+      if (req.file) deleteFile(req.file);
+      return res.status(403).json({
+        status: false,
+        message: "Firebase token does not match the provided email or mobile.",
       });
+    }
 
-      // Save user first, then respond (avoid success without DB persistence)
-      try {
-        await Promise.all([
-          newUser.save(),
-          History.create({
-            type: 1,
-            uniqueId: historyUniqueId,
-            userId: newUser._id,
-            userCoin: bonusCoins,
-            date: newUser.date,
-          }),
-        ]);
-      } catch (saveError) {
-        console.error("User register save failed:", saveError);
-        return res.status(500).json({ status: false, message: "Registration failed. Please try again." });
-      }
+    // Ensure email / mobile not already used by another account
+    const [existingByEmail, existingByPhone, existingFirebaseUser, userUniqueId, historyUniqueId] = await Promise.all([
+      User.findOne({ email: registerEmail }).select("_id").lean(),
+      User.findOne({
+        $or: [{ phoneNumber: registerPhone }, { phoneNumber: registerPhoneWithCountry }],
+      })
+        .select("_id")
+        .lean(),
+      User.exists({ firebaseId: uid }),
+      generateUniqueId(),
+      generateHistoryUniqueId(),
+    ]);
 
-      res.status(200).json({
-        status: true,
-        message: "A new user has registered an account.",
-        signUp: true,
-        user: {
-          _id: newUser._id,
-          loginType: newUser.loginType,
-          name: newUser.fullName,
-          profilePic: newUser.profilePic,
-          fcmToken: newUser.fcmToken,
-          lastlogin: newUser.lastlogin,
+    if (existingByEmail) {
+      if (req.file) deleteFile(req.file);
+      return res.status(200).json({ status: false, message: "Email is already registered." });
+    }
+
+    if (existingByPhone) {
+      if (req.file) deleteFile(req.file);
+      return res.status(200).json({ status: false, message: "Mobile number is already registered." });
+    }
+
+    if (existingFirebaseUser) {
+      return res.status(200).json({ status: false, message: "User with this Firebase ID already exists." });
+    }
+
+    const bonusCoins = settingJSON.dailyLoginBonusCoins ?? 5000;
+    const hashedPassword = await hashPassword(password);
+
+    // Store BOTH email + mobile on same user (one password for both login methods)
+    const newUser = new User({
+      loginType: resolvedLoginType, // how they registered this time (record only)
+      fullName: fullName || "",
+      nickName: nickName || "",
+      countryCode: registerCountryCode,
+      phoneNumber: registerPhone,
+      email: registerEmail,
+      password: hashedPassword,
+      profilePic: req.file ? req.file.path : profilePic,
+      fcmToken,
+      identity,
+      uniqueId: userUniqueId,
+      firebaseId: uid,
+      authProvider: provider,
+      coins: bonusCoins,
+      birthDate,
+      lastlogin: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+      date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+    });
+
+    try {
+      await Promise.all([
+        newUser.save(),
+        History.create({
+          type: 1,
+          uniqueId: historyUniqueId,
+          userId: newUser._id,
+          userCoin: bonusCoins,
+          date: newUser.date,
+        }),
+      ]);
+    } catch (saveError) {
+      console.error("User register save failed:", saveError);
+      return res.status(500).json({ status: false, message: "Registration failed. Please try again." });
+    }
+
+    res.status(200).json({
+      status: true,
+      message: "A new user has registered an account.",
+      signUp: true,
+      loginMethod: detected.type,
+      user: {
+        _id: newUser._id,
+        loginType: newUser.loginType,
+        name: newUser.fullName,
+        email: newUser.email,
+        phoneNumber: newUser.phoneNumber,
+        countryCode: newUser.countryCode,
+        profilePic: newUser.profilePic,
+        fcmToken: newUser.fcmToken,
+        lastlogin: newUser.lastlogin,
+      },
+    });
+
+    if (newUser?.fcmToken) {
+      const payload = {
+        token: newUser.fcmToken,
+        data: {
+          title: "🚀 Instant Bonus Activated! 🎁",
+          body: "🎊 Hooray! You've unlocked a special welcome reward just for joining us. Enjoy your bonus! 💰",
+          type: "LOGINBONUS",
         },
-      });
+      };
 
-      if (newUser?.fcmToken) {
-        const payload = {
-          token: newUser.fcmToken,
-          data: {
-            title: "🚀 Instant Bonus Activated! 🎁",
-            body: "🎊 Hooray! You've unlocked a special welcome reward just for joining us. Enjoy your bonus! 💰",
-            type: "LOGINBONUS",
-          },
-        };
+      try {
+        const adminInstance = await admin;
+        const response = await adminInstance.messaging().send(payload);
+        console.log("Successfully sent with response: ", response);
 
-        try {
-          const adminInstance = await admin;
-          const response = await adminInstance.messaging().send(payload);
-          console.log("Successfully sent with response: ", response);
+        const notification = new Notification({
+          userId: newUser._id,
+          title: payload.data.title,
+          message: payload.data.body,
+          date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
+        });
 
-          const notification = new Notification({
-            userId: newUser._id,
-            title: payload.data.title,
-            message: payload.data.body,
-            date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
-          });
-
-          await notification.save();
-        } catch (err) {
-          console.error("Error sending FCM notification:", err);
-        }
+        await notification.save();
+      } catch (err) {
+        console.error("Error sending FCM notification:", err);
       }
     }
   } catch (error) {
@@ -339,6 +396,7 @@ exports.authenticateOrRegisterUser = async (req, res) => {
     return res.status(500).json({ status: false, message: "Internal Server Error" });
   }
 };
+
 
 //update user's profile
 exports.updateUserProfile = async (req, res) => {
@@ -489,7 +547,7 @@ exports.resetPassword = async (req, res) => {
       return res.status(200).json({ status: false, message: "Passwords do not match." });
     }
 
-    const user = await User.findOne({ email: email.trim(), loginType: 4 }).select("+password firebaseId");
+    const user = await User.findOne({ email: email.trim() }).select("+password firebaseId");
     if (!user) {
       return res.status(200).json({ status: false, message: "User not found with the provided email." });
     }

@@ -32,6 +32,7 @@ const verifyAuthToken = async (req, res, next) => {
     req.user = {
       uid: decodedToken.uid,
       email: decodedToken.email || "",
+      phone: decodedToken.phone_number || "",
       provider: decodedToken.firebase?.sign_in_provider || "unknown",
     };
 
