@@ -6,9 +6,12 @@ const fs = require("fs");
 //mongoose
 const mongoose = require("mongoose");
 
-//Cryptr
-const Cryptr = require("cryptr");
-const cryptr = new Cryptr("myTotallySecretKey");
+//Cryptr (kept commented — replaced by bcrypt for user passwords)
+// const Cryptr = require("cryptr");
+// const cryptr = new Cryptr("myTotallySecretKey");
+
+// bcrypt password helpers (hash + verify, with legacy Cryptr migration)
+const { hashPassword, verifyPassword } = require("../../util/password");
 
 //import model
 const History = require("../../models/history.model");
@@ -141,6 +144,18 @@ exports.authenticateOrRegisterUser = async (req, res) => {
           return res.status(200).json({ status: false, message: "Email is required." });
         }
 
+        // Password is required for email-password flow (Firebase + backend bcrypt)
+        if (!password) {
+          if (req.file) deleteFile(req.file);
+          return res.status(200).json({ status: false, message: "Password is required." });
+        }
+
+        // Token email must match body email (prevent token misuse)
+        if (!req.user.email || req.user.email.toLowerCase() !== email.trim().toLowerCase()) {
+          if (req.file) deleteFile(req.file);
+          return res.status(403).json({ status: false, message: "Token email does not match request email." });
+        }
+
         userQuery = { email: email.trim(), loginType: 4 };
         break;
 
@@ -156,12 +171,13 @@ exports.authenticateOrRegisterUser = async (req, res) => {
       default:
         if (req.file) deleteFile(req.file);
         // Only loginType 4 is allowed right now
-        return res.status(200).json({ status: false, message: "Invalid loginType. Only email-password (loginType 4) is enabled." });
+        return res.status(200).json({ status: false, message: "Invalid loginType. Only email-password is enabled." });
     }
 
     let user = null;
     if (userQuery && Object.keys(userQuery).length > 0) {
-      user = await User.findOne(userQuery).select("_id loginType nickName fullName profilePic email fcmToken lastlogin isBlock isListener listenerId");
+      // Include password + firebaseId for login verification (not returned in final response)
+      user = await User.findOne(userQuery).select("_id loginType nickName fullName profilePic email password firebaseId fcmToken lastlogin isBlock isListener listenerId");
     }
 
     if (user) {
@@ -172,6 +188,19 @@ exports.authenticateOrRegisterUser = async (req, res) => {
           status: false,
           message: "Identity already taken or unauthorized login attempt.",
         });
+      }
+
+      // Backend bcrypt password verify (Firebase token already verified in middleware)
+      if (loginType === 4) {
+        const { match, needsRehash } = await verifyPassword(password, user.password);
+        if (!match) {
+          return res.status(401).json({ status: false, message: "Invalid email or password." });
+        }
+
+        // Lazy migration: old Cryptr password → bcrypt hash
+        if (needsRehash) {
+          user.password = await hashPassword(password);
+        }
       }
 
       if (user.isBlock) {
@@ -202,10 +231,15 @@ exports.authenticateOrRegisterUser = async (req, res) => {
       user.lastlogin = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
       await user.save();
 
+      // Do not send password hash to client
+      const userResponse = user.toObject();
+      delete userResponse.password;
+      delete userResponse.firebaseId;
+
       return res.status(200).json({
         status: true,
         message: "User logged in.",
-        user,
+        user: userResponse,
         signUp: false,
       });
     } else {
@@ -217,6 +251,9 @@ exports.authenticateOrRegisterUser = async (req, res) => {
 
       const bonusCoins = settingJSON.dailyLoginBonusCoins ?? 5000;
 
+      // Hash password with bcrypt before saving (loginType 4)
+      const hashedPassword = password ? await hashPassword(password) : "";
+
       const newUser = new User({
         loginType,
         fullName: fullName || "",
@@ -224,7 +261,7 @@ exports.authenticateOrRegisterUser = async (req, res) => {
         countryCode: countryCode || "",
         phoneNumber: phoneNumber || "",
         email: email?.trim(),
-        password: password ? cryptr.encrypt(password) : "",
+        password: hashedPassword,
         profilePic: req.file ? req.file.path : profilePic,
         fcmToken,
         identity,
@@ -236,6 +273,23 @@ exports.authenticateOrRegisterUser = async (req, res) => {
         lastlogin: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
         date: new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
       });
+
+      // Save user first, then respond (avoid success without DB persistence)
+      try {
+        await Promise.all([
+          newUser.save(),
+          History.create({
+            type: 1,
+            uniqueId: historyUniqueId,
+            userId: newUser._id,
+            userCoin: bonusCoins,
+            date: newUser.date,
+          }),
+        ]);
+      } catch (saveError) {
+        console.error("User register save failed:", saveError);
+        return res.status(500).json({ status: false, message: "Registration failed. Please try again." });
+      }
 
       res.status(200).json({
         status: true,
@@ -250,17 +304,6 @@ exports.authenticateOrRegisterUser = async (req, res) => {
           lastlogin: newUser.lastlogin,
         },
       });
-
-      await Promise.all([
-        newUser.save(),
-        History.create({
-          type: 1,
-          uniqueId: historyUniqueId,
-          userId: newUser._id,
-          userCoin: bonusCoins,
-          date: newUser.date,
-        }),
-      ]);
 
       if (newUser?.fcmToken) {
         const payload = {
@@ -379,9 +422,13 @@ exports.modifyPassword = async (req, res) => {
       return res.status(200).json({ status: false, message: "All password fields are required." });
     }
 
+    if (newPass !== confirmPass) {
+      return res.status(200).json({ status: false, message: "New and Confirm passwords do not match." });
+    }
+
     const userId = new mongoose.Types.ObjectId(req.user.userId);
 
-    const user = await User.findById(userId).select("+password");
+    const user = await User.findById(userId).select("+password firebaseId");
     if (!user) {
       return res.status(200).json({ status: false, message: "User not found." });
     }
@@ -390,15 +437,29 @@ exports.modifyPassword = async (req, res) => {
       return res.status(403).json({ status: false, message: "You are blocked by the admin." });
     }
 
-    if (cryptr.decrypt(user.password) !== oldPass) {
+    // Backend bcrypt verify old password (supports legacy Cryptr too)
+    const { match } = await verifyPassword(oldPass, user.password);
+    if (!match) {
       return res.status(200).json({ status: false, message: "Old password does not match." });
     }
 
-    if (newPass !== confirmPass) {
-      return res.status(200).json({ status: false, message: "New and Confirm passwords do not match." });
+    const hashedPassword = await hashPassword(newPass);
+
+    // Keep Firebase + Mongo password in sync
+    if (user.firebaseId) {
+      try {
+        const adminInstance = await admin;
+        await adminInstance.auth().updateUser(user.firebaseId, { password: newPass });
+      } catch (firebaseError) {
+        console.error("Firebase password update failed:", firebaseError);
+        return res.status(500).json({
+          status: false,
+          message: "Failed to update password in Firebase. Mongo password not changed.",
+        });
+      }
     }
 
-    user.password = cryptr.encrypt(newPass);
+    user.password = hashedPassword;
     await user.save();
 
     return res.status(200).json({
@@ -424,7 +485,11 @@ exports.resetPassword = async (req, res) => {
       return res.status(200).json({ status: false, message: "Both password fields are required." });
     }
 
-    const user = await User.findOne({ email }).select("+password");
+    if (newPassword !== confirmPassword) {
+      return res.status(200).json({ status: false, message: "Passwords do not match." });
+    }
+
+    const user = await User.findOne({ email: email.trim(), loginType: 4 }).select("+password firebaseId");
     if (!user) {
       return res.status(200).json({ status: false, message: "User not found with the provided email." });
     }
@@ -433,17 +498,29 @@ exports.resetPassword = async (req, res) => {
       return res.status(403).json({ status: false, message: "You are blocked by the admin." });
     }
 
-    if (newPassword !== confirmPassword) {
-      return res.status(200).json({ status: false, message: "Passwords do not match." });
+    const hashedPassword = await hashPassword(newPassword);
+
+    // Keep Firebase + Mongo password in sync
+    if (user.firebaseId) {
+      try {
+        const adminInstance = await admin;
+        await adminInstance.auth().updateUser(user.firebaseId, { password: newPassword });
+      } catch (firebaseError) {
+        console.error("Firebase password reset failed:", firebaseError);
+        return res.status(500).json({
+          status: false,
+          message: "Failed to update password in Firebase. Mongo password not changed.",
+        });
+      }
     }
 
-    res.status(200).json({
+    user.password = hashedPassword;
+    await user.save();
+
+    return res.status(200).json({
       status: true,
       message: "Password has been set successfully.",
     });
-
-    user.password = cryptr.encrypt(newPassword);
-    await user.save();
   } catch (error) {
     console.error(error);
     return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });

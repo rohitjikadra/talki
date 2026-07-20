@@ -9,6 +9,9 @@ const generateUniqueId = require("../../util/generateUniqueId");
 //private key
 const admin = require("../../util/privateKey");
 
+//deletefile
+const { deleteFiles } = require("../../util/deletefile");
+
 //import model
 const ListenerMatchHistory = require("../../models/listenerMatchHistory.model");
 const Notification = require("../../models/notification.model");
@@ -58,11 +61,6 @@ exports.initiateListenerRequest = async (req, res) => {
       return res.status(200).json({ status: false, message: "Oops! A listener request already exists." });
     }
 
-    res.status(200).json({
-      status: true,
-      message: "Listener request successfully sent.",
-    });
-
     if (declineListenerRequest) {
       await Listener.findByIdAndDelete(declineListenerRequest);
     }
@@ -77,8 +75,8 @@ exports.initiateListenerRequest = async (req, res) => {
       selfIntro,
       talkTopics: talkTopicArray,
       language: languages,
-      gender: gender.trim().toLowerCase() || "",
-      country: country.trim().toLowerCase() || "",
+      gender: gender?.trim()?.toLowerCase() || "",
+      country: country?.trim()?.toLowerCase() || "",
       age: age || 18,
       experience,
       location: location.trim().toLowerCase() || "",
@@ -94,6 +92,11 @@ exports.initiateListenerRequest = async (req, res) => {
     });
 
     await newListener.save();
+
+    res.status(200).json({
+      status: true,
+      message: "Listener request successfully sent.",
+    });
 
     if (fcmToken && fcmToken !== null) {
       const payload = {
@@ -122,7 +125,9 @@ exports.initiateListenerRequest = async (req, res) => {
   } catch (error) {
     if (req.files) deleteFiles(req.files);
     console.log(error);
-    return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
+    if (!res.headersSent) {
+      return res.status(500).json({ status: false, error: error.message || "Internal Server Error" });
+    }
   }
 };
 
