@@ -36,6 +36,9 @@ const path = require("path");
 // auto-detect email vs mobile (no client loginType needed)
 const { detectIdentifier, normalizePhoneDigits, isSamePhone, resolveDialCode } = require("../../util/authIdentifier");
 
+// first_name + last_name → fullName (request fullName ignored)
+const { resolveNameFields, hasRequiredNames } = require("../../util/resolveNameFields");
+
 
 //check the user is exists or not (email OR mobile via identifier)
 exports.verifyUserExistence = async (req, res) => {
@@ -101,10 +104,13 @@ exports.authenticateOrRegisterUser = async (req, res) => {
       countryCode,
       phoneNumber,
       nickName,
-      fullName,
+      // fullName from request is IGNORED — always built from first_name + last_name
       profilePic,
       birthDate,
     } = req.body;
+
+    // API tags: first_name, last_name (compulsory) → DB: firstName, lastName, fullName (joined)
+    const nameFields = resolveNameFields(req.body);
 
     if (!identity || !fcmToken) {
       if (req.file) deleteFile(req.file);
@@ -155,14 +161,14 @@ exports.authenticateOrRegisterUser = async (req, res) => {
     let user = null;
     if (detected.type === "email") {
       user = await User.findOne({ email: lookupEmail }).select(
-        "_id loginType nickName fullName profilePic email phoneNumber countryCode password firebaseId fcmToken lastlogin isBlock isListener listenerId",
+        "_id loginType nickName fullName firstName lastName profilePic email phoneNumber countryCode password firebaseId fcmToken lastlogin isBlock isListener listenerId",
       );
     } else {
       const dial = lookupCountryCode ? resolveDialCode(lookupCountryCode) : "";
       const withCountry = dial ? `${dial}${lookupPhone}` : null;
       user = await User.findOne({
         $or: [{ phoneNumber: lookupPhone }, ...(withCountry ? [{ phoneNumber: withCountry }] : []), ...(phoneNumber ? [{ phoneNumber: String(phoneNumber).trim() }] : [])],
-      }).select("_id loginType nickName fullName profilePic email phoneNumber countryCode password firebaseId fcmToken lastlogin isBlock isListener listenerId");
+      }).select("_id loginType nickName fullName firstName lastName profilePic email phoneNumber countryCode password firebaseId fcmToken lastlogin isBlock isListener listenerId");
     }
 
     // ===================== LOGIN =====================
@@ -208,7 +214,12 @@ exports.authenticateOrRegisterUser = async (req, res) => {
       }
 
       user.nickName = nickName?.trim() || user.nickName;
-      user.fullName = fullName?.trim() || user.fullName;
+      // Login pe names optional update — only if BOTH first_name + last_name sent
+      if (hasRequiredNames(req.body)) {
+        user.firstName = nameFields.firstName;
+        user.lastName = nameFields.lastName;
+        user.fullName = nameFields.fullName;
+      }
       user.profilePic = req.file ? req.file.path : profilePic || user.profilePic;
       user.fcmToken = fcmToken || user.fcmToken;
       user.lastlogin = new Date().toLocaleString("en-US", { timeZone: "Asia/Kolkata" });
@@ -228,7 +239,15 @@ exports.authenticateOrRegisterUser = async (req, res) => {
     }
 
     // ===================== REGISTER =====================
-    // Compulsory: email + mobile + countryCode (same password for both login methods later)
+    // Compulsory: email + mobile + countryCode + first_name + last_name
+    if (!hasRequiredNames(req.body)) {
+      if (req.file) deleteFile(req.file);
+      return res.status(200).json({
+        status: false,
+        message: "first_name and last_name are required for registration.",
+      });
+    }
+
     if (!bodyEmail) {
       if (req.file) deleteFile(req.file);
       return res.status(200).json({ status: false, message: "Email is required for registration." });
@@ -311,7 +330,9 @@ exports.authenticateOrRegisterUser = async (req, res) => {
     // Store BOTH email + mobile on same user (one password for both login methods)
     const newUser = new User({
       loginType: resolvedLoginType, // how they registered this time (record only)
-      fullName: fullName || "",
+      firstName: nameFields.firstName,
+      lastName: nameFields.lastName,
+      fullName: nameFields.fullName, // ONLY from first_name + last_name (request fullName ignored)
       nickName: nickName || "",
       countryCode: registerCountryCode,
       phoneNumber: registerPhone,
@@ -354,6 +375,8 @@ exports.authenticateOrRegisterUser = async (req, res) => {
         _id: newUser._id,
         loginType: newUser.loginType,
         name: newUser.fullName,
+        firstName: newUser.firstName,
+        lastName: newUser.lastName,
         email: newUser.email,
         phoneNumber: newUser.phoneNumber,
         countryCode: newUser.countryCode,
@@ -427,7 +450,22 @@ exports.updateUserProfile = async (req, res) => {
     }
 
     user.nickName = req.body.nickName ? req.body.nickName : user.nickName;
-    user.fullName = req.body.fullName ? req.body.fullName : user.fullName;
+
+    // Profile name update: first_name + last_name compulsory together; request fullName ignored
+    if (req.body.first_name !== undefined || req.body.firstName !== undefined || req.body.last_name !== undefined || req.body.lastName !== undefined) {
+      if (!hasRequiredNames(req.body)) {
+        if (req.file) deleteFile(req.file);
+        return res.status(200).json({
+          status: false,
+          message: "first_name and last_name are both required to update name.",
+        });
+      }
+      const profileNames = resolveNameFields(req.body);
+      user.firstName = profileNames.firstName;
+      user.lastName = profileNames.lastName;
+      user.fullName = profileNames.fullName;
+    }
+
     user.email = req.body.email ? req.body.email : user.email;
     user.birthDate = req.body.birthDate ? req.body.birthDate : user.birthDate;
     user.gender = req.body.gender ? req.body.gender?.toLowerCase()?.trim() : user.gender;

@@ -5,7 +5,9 @@ const mongoose = require("mongoose");
 const userSchema = new mongoose.Schema(
   {
     nickName: { type: String, default: "" },
-    fullName: { type: String, default: "" },
+    fullName: { type: String, default: "" }, // kept for display / old APIs (built from firstName + lastName)
+    firstName: { type: String, default: "" }, // API tag: first_name
+    lastName: { type: String, default: "" }, // API tag: last_name
     birthDate: { type: String, default: "" },
     gender: { type: String, default: "" },
     bio: { type: String, default: "" },
