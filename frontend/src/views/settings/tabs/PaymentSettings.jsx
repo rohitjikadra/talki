@@ -1,10 +1,8 @@
 'use client'
 
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 
 import { useSelector, useDispatch } from 'react-redux'
-
-import axios from 'axios'
 
 // MUI Imports
 import Box from '@mui/material/Box'
@@ -25,21 +23,11 @@ import { Divider } from '@mui/material'
 import { updateSettings, toggleSetting } from '@/redux-store/slices/settings'
 import HoverPopover from '@/common/HoverPopover'
 import { toolTipData } from '@/settingTooltip'
-import { baseURL, secretKey } from '@/config'
-import PaymentRestrictionsDialog from '@/views/settings/dialogs/PaymentRestrictionsDialog'
 
 const PaymentSettings = () => {
   const dispatch = useDispatch()
   const [initialData, setInitialData] = useState({})
   const { settings, loading } = useSelector(state => state.settings)
-  const { profileData } = useSelector(state => state.adminSlice)
-
-
-
-  const [isCheckedOnce, setIsCheckedOnce] = useState(false)
-  const [isPaymentAllowed, setIsPaymentAllowed] = useState(null)
-  const [isPaymentRestrictionDialogOpen, setIsPaymentRestrictionDialogOpen] = useState(false)
-  const paymentCheckPromiseRef = useRef(null)
 
   // Using string values for inputs to allow empty fields
   const [formData, setFormData] = useState({
@@ -118,75 +106,7 @@ const PaymentSettings = () => {
     
   }, [settings])
 
-  const getAuthHeaders = () => {
-    if (typeof window === 'undefined') return {}
-
-    const token = localStorage.getItem('admin_token')
-    const uid = localStorage.getItem('uid')
-
-    return {
-      'Content-Type': 'application/json',
-      key: secretKey,
-      Authorization: `Bearer ${token}`,
-      'x-admin-uid': uid
-    }
-  }
-
-  const checkPaymentSettingPermissionOnce = async () => {
-    
-
-    if (isCheckedOnce) return isPaymentAllowed === true;
-
-    if (paymentCheckPromiseRef.current) return paymentCheckPromiseRef.current;
-
-    try {
-      const promise = (async () => {
-        const response = await axios.get(
-          `${baseURL}/api/admin/setting/verifyPurchaseCode`,
-          { headers: getAuthHeaders() }
-        );
-
-        const allowed =
-          response?.data?.status === true &&
-          response?.data?.allowPaymentSettings === true;
-
-        setIsCheckedOnce(true);
-        setIsPaymentAllowed(allowed);
-
-        return allowed;
-      })();
-
-      paymentCheckPromiseRef.current = promise;
-
-      return await promise;
-    } catch (error) {
-      // Fail closed: if validation cannot be performed, treat as restricted.
-      setIsCheckedOnce(true);
-      setIsPaymentAllowed(false);
-
-      return false;
-    } finally {
-      paymentCheckPromiseRef.current = null;
-    }
-  };
-
   const handleToggle = async type => {
-
-
-    if (isCheckedOnce) {
-      if (isPaymentAllowed !== true) {
-        setIsPaymentRestrictionDialogOpen(true)
-        return
-      }
-    } else {
-      const allowed = await checkPaymentSettingPermissionOnce()
-
-      if (!allowed) {
-        setIsPaymentRestrictionDialogOpen(true)
-        return
-      }
-    }
-
     if (settings?._id) {
       dispatch(toggleSetting({ settingId: settings._id, type }))
 
@@ -993,11 +913,6 @@ const PaymentSettings = () => {
 
 
       </Grid>
-
-      <PaymentRestrictionsDialog
-        open={isPaymentRestrictionDialogOpen}
-        onClose={() => setIsPaymentRestrictionDialogOpen(false)}
-      />
 
       {/* <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 4 }}>
         <Button

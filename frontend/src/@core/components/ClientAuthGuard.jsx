@@ -8,25 +8,12 @@ import { onAuthStateChanged } from 'firebase/auth'
 
 import { CircularProgress } from '@mui/material'
 
-import axios from 'axios'
-
 import { auth } from '@/libs/firebase'
-import { baseURL } from '@/config'
 
 const ClientAuthGuard = ({ children }) => {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [authenticated, setAuthenticated] = useState(false);
-
-  //  const checkLogin = async ()=>{
-  //   const  response  = await axios.get(`${baseURL}/api/admin/login`);
-
-  //   if(response.data.login){
-  //      router.replace('/login')
-  //   }else{
-  //      router.replace('/register')
-  //   }
-  // }
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, user => {
@@ -56,7 +43,6 @@ const ClientAuthGuard = ({ children }) => {
           if (!isAuthPath) {
             // Redirect to login if trying to access protected pages
             router.replace('/')
-            // checkLogin()
           } else {
             // Allow access to auth pages
             setAuthenticated(true)

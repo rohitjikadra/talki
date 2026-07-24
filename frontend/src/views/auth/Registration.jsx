@@ -92,11 +92,7 @@ const schema = yup.object().shape({
   cpassword: yup
     .string()
     .oneOf([yup.ref('password'), null], 'Confirm passwords not match')
-    .required('Confirm password is required'),
-
-  code: yup
-    .string()
-    .required('Purchase code is required')
+    .required('Confirm password is required')
 });
 
 
@@ -146,7 +142,6 @@ const Registration = ({ mode }) => {
     defaultValues: {
       email: '',
       password: '',
-      code: "",
       privateKey: '',
     }
   })
@@ -225,7 +220,6 @@ const Registration = ({ mode }) => {
           signInAdmin({
             email: credentials.email,
             password: credentials.password,
-            code: credentials.code,
             privateKey: credentials.privateKey,
             uid
           })
@@ -454,31 +448,6 @@ const Registration = ({ mode }) => {
                         </IconButton>
                       </InputAdornment>
                     ),
-                  }
-                }}
-              />
-            </div>
-            <div>
-              <Typography variant='body2' className='mb-2 text-left'>
-                Enter your purchase code
-              </Typography>
-              <CustomTextField
-                fullWidth
-                placeholder='Type your purchase code here'
-                type={'text'}
-                {...register('code')}
-                error={!!errors.code}
-                helperText={errors.code?.message}
-
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position='start'>
-                        <i className='tabler-password-user' />
-                      </InputAdornment>
-                    ),
-
-
                   }
                 }}
               />

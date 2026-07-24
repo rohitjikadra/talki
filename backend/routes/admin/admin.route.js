@@ -1,123 +1,41 @@
-function _0x3814(_0x105e26, _0x2e93c1) {
-  _0x105e26 = _0x105e26 - (0x1 * -0x6e5 + -0x1e8 * -0xb + -0xc80);
-  const _0x3cc0f4 = _0x3413();
-  let _0xe2cf3d = _0x3cc0f4[_0x105e26];
-  return _0xe2cf3d;
-}
-const _0xf2250b = _0x3814;
-function _0x3413() {
-  const _0x16d7b4 = [
-    "ation",
-    "/initiateA",
-    "ileDetails",
-    "asswordRes",
-    "eware",
-    "/checkAcce",
-    "/confirmPa",
-    "express",
-    "min/admin.",
-    "exports",
-    "idateAdmin",
-    "1383984mYGBPs",
-    "authentica",
-    "leware/val",
-    "Router",
-    "verifyAdmi",
-    "/verifyAdm",
-    "../../util",
-    "/initiateP",
-    "/updatePas",
-    "sword",
-    "Profile",
-    "nProfile",
-    "/authentic",
-    "updatePass",
-    "961536EXLrsz",
-    "patch",
-    "ration",
-    "/fetchAdmi",
-    "single",
-    "50aVQJLV",
-    "post",
-    "word",
-    "fetchAdmin",
-    "../../cont",
-    "736947xzkHWb",
-    "sswordRese",
-    "20swaIVC",
-    "Auth.middl",
-    "dminRegist",
-    "swordReset",
-    "536OkJgYj",
-    "4364MCiPkG",
-    "get",
-    "5995715tsYebr",
-    "minRegistr",
-    "initiatePa",
-    "88rmKneR",
-    "nEmail",
-    "teAdmin",
-    "173478SevzsK",
-    "initiateAd",
-    "ateAdmin",
-    "/updatePro",
-    "inEmail",
-    "rollers/ad",
-    "updateProf",
-    "confirmPas",
-    "9107YNeNOV",
-    "../../midd",
-    "controller",
-    "image",
-    "multer",
-    "fileDetail",
-    "/multer",
-  ];
-  _0x3413 = function () {
-    return _0x16d7b4;
-  };
-  return _0x3413();
-}
-(function (_0x1ed014, _0x52e872) {
-  const _0x53b2df = _0x3814,
-    _0x3ac9d6 = _0x1ed014();
-  while (!![]) {
-    try {
-      const _0x4172ab =
-        (-parseInt(_0x53b2df(0x1b9)) / (0xd0c + 0x3 * 0x297 + 0x10 * -0x14d)) * (-parseInt(_0x53b2df(0x1be)) / (0x20a0 + -0x1213 + -0xe8b)) +
-        parseInt(_0x53b2df(0x1a8)) / (0x1469 + 0x12e8 + -0xd * 0x306) +
-        -parseInt(_0x53b2df(0x19a)) / (-0x2681 + 0x1a9b + -0x5f5 * -0x2) +
-        (parseInt(_0x53b2df(0x1b4)) / (-0x1 * -0x669 + 0x24 + -0x688)) * (parseInt(_0x53b2df(0x1c1)) / (0xe9f + -0x1e7d + 0xfe4)) +
-        (-parseInt(_0x53b2df(0x1c9)) / (-0x1 * 0x2533 + 0x1 * -0x152b + 0x3a65)) * (-parseInt(_0x53b2df(0x1b8)) / (0xb6d + -0x226f + -0x3 * -0x7ae)) +
-        (-parseInt(_0x53b2df(0x1b2)) / (0x10e9 + 0x18 * 0x97 + -0x1f08)) * (-parseInt(_0x53b2df(0x1ad)) / (-0x12b9 + -0x5cf * -0x6 + -0x1 * 0x1017)) +
-        -parseInt(_0x53b2df(0x1bb)) / (0x2 * 0x4e1 + 0x168d * 0x1 + 0x8c * -0x3b);
-      if (_0x4172ab === _0x52e872) break;
-      else _0x3ac9d6["push"](_0x3ac9d6["shift"]());
-    } catch (_0x55b1f9) {
-      _0x3ac9d6["push"](_0x3ac9d6["shift"]());
-    }
-  }
-})(_0x3413, -0x1 * 0x1e1a3 + -0x12c * 0x4f1 + -0x265c * -0x4b);
-const express = require(_0xf2250b(0x196)),
-  route = express[_0xf2250b(0x19d)](),
-  checkAccessWithSecretKey = require(_0xf2250b(0x1a0) + _0xf2250b(0x194) + "ss"),
-  AdminController = require(_0xf2250b(0x1b1) + _0xf2250b(0x1c6) + _0xf2250b(0x197) + _0xf2250b(0x1cb)),
-  multer = require(_0xf2250b(0x1cd)),
-  storage = require(_0xf2250b(0x1a0) + _0xf2250b(0x1cf)),
-  upload = multer({ storage: storage }),
-  validateAdminAuth = require(_0xf2250b(0x1ca) + _0xf2250b(0x19c) + _0xf2250b(0x199) + _0xf2250b(0x1b5) + _0xf2250b(0x193));
-(route[_0xf2250b(0x1ae)](_0xf2250b(0x1d1) + _0xf2250b(0x1b6) + _0xf2250b(0x1aa), checkAccessWithSecretKey(), AdminController[_0xf2250b(0x1c2) + _0xf2250b(0x1bc) + _0xf2250b(0x1d0)]),
-  route[_0xf2250b(0x1ae)](_0xf2250b(0x1a6) + _0xf2250b(0x1c3), validateAdminAuth, checkAccessWithSecretKey(), AdminController[_0xf2250b(0x19b) + _0xf2250b(0x1c0)]),
-  route[_0xf2250b(0x1a9)](
-    _0xf2250b(0x1c4) + _0xf2250b(0x1ce) + "s",
-    validateAdminAuth,
-    checkAccessWithSecretKey(),
-    upload[_0xf2250b(0x1ac)](_0xf2250b(0x1cc)),
-    AdminController[_0xf2250b(0x1c7) + _0xf2250b(0x1d2)],
-  ),
-  route[_0xf2250b(0x1ba)](_0xf2250b(0x1ab) + _0xf2250b(0x1a5), validateAdminAuth, checkAccessWithSecretKey(), AdminController[_0xf2250b(0x1b0) + _0xf2250b(0x1a4)]),
-  route[_0xf2250b(0x1a9)](_0xf2250b(0x1a1) + _0xf2250b(0x1d3) + "et", checkAccessWithSecretKey(), AdminController[_0xf2250b(0x1bd) + _0xf2250b(0x1b3) + "t"]),
-  route[_0xf2250b(0x1a9)](_0xf2250b(0x1a2) + _0xf2250b(0x1a3), validateAdminAuth, checkAccessWithSecretKey(), AdminController[_0xf2250b(0x1a7) + _0xf2250b(0x1af)]),
-  route[_0xf2250b(0x1a9)](_0xf2250b(0x195) + _0xf2250b(0x1b3) + "t", checkAccessWithSecretKey(), AdminController[_0xf2250b(0x1c8) + _0xf2250b(0x1b7)]),
-  route[_0xf2250b(0x1ba)](_0xf2250b(0x19f) + _0xf2250b(0x1c5), checkAccessWithSecretKey(), AdminController[_0xf2250b(0x19e) + _0xf2250b(0x1bf)]),
-  (module[_0xf2250b(0x198)] = route));
+const express = require("express");
+const multer = require("multer");
+
+const route = express.Router();
+
+const checkAccessWithSecretKey = require("../../util/checkAccess");
+const validateAdminAuth = require("../../middleware/validateAdminAuth.middleware");
+const AdminController = require("../../controllers/admin/admin.controller");
+const AdminCreateController = require("../../controllers/admin/adminCreate.controller");
+const storage = require("../../util/multer");
+
+const upload = multer({ storage });
+
+// First-time admin registration (secret key only)
+route.post("/initiateAdminRegistration", checkAccessWithSecretKey(), AdminController.initiateAdminRegistration);
+
+// Admin login
+route.post("/authenticateAdmin", validateAdminAuth, checkAccessWithSecretKey(), AdminController.authenticateAdmin);
+
+// Create additional admin (Firebase Auth + MongoDB)
+route.post("/createAdmin", validateAdminAuth, checkAccessWithSecretKey(), AdminCreateController.createAdmin);
+
+// Profile
+route.patch(
+  "/updateProfileDetails",
+  validateAdminAuth,
+  checkAccessWithSecretKey(),
+  upload.single("image"),
+  AdminController.updateProfileDetails
+);
+route.get("/fetchAdminProfile", validateAdminAuth, checkAccessWithSecretKey(), AdminController.fetchAdminProfile);
+
+// Password
+route.patch("/updatePassword", validateAdminAuth, checkAccessWithSecretKey(), AdminController.updatePassword);
+route.patch("/initiatePasswordReset", checkAccessWithSecretKey(), AdminController.initiatePasswordReset);
+route.patch("/confirmPasswordReset", checkAccessWithSecretKey(), AdminController.confirmPasswordReset);
+
+// Email verify
+route.get("/verifyAdminEmail", checkAccessWithSecretKey(), AdminController.verifyAdminEmail);
+
+module.exports = route;

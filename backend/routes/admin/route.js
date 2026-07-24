@@ -19,7 +19,6 @@ const withdrawalRecord = require("./withdrawalRecord.route");
 const history = require("./history.route");
 const currency = require("./currency.route");
 const setting = require("./setting.route");
-const login = require("./login.route");
 const notification = require("./notification.route");
 const block = require("./block.route");
 const report = require("./report.route");
@@ -47,6 +46,5 @@ route.use("/report", validateAdminAuth, report);
 route.use("/reportReason", validateAdminAuth, reportReason);
 route.use("/language", validateAdminAuth, language);
 route.use("/translation", validateAdminAuth, translation);
-route.use("/login", login);
 
 module.exports = route;

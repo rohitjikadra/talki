@@ -7,7 +7,6 @@ const adminSchema = new mongoose.Schema(
     email: { type: String, trim: true, default: "" },
     password: { type: String, trim: true, default: "" },
     image: { type: String, trim: true, default: "" },
-    purchaseCode: { type: String, trim: true, default: "" },
   },
   {
     timestamps: true,

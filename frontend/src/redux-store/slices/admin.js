@@ -44,11 +44,11 @@ export const loginAdmin = createAsyncThunk(
 
 export const signInAdmin = createAsyncThunk(
   '/api/admin/initiateAdminRegistration',
-  async ({ email, password, uid, code, privateKey }, { rejectWithValue }) => {
+  async ({ email, password, uid, privateKey }, { rejectWithValue }) => {
     try {
       const response = await axios.post(
         `${baseURL}/api/admin/initiateAdminRegistration`,
-        { email, password, uid, code, privateKey },
+        { email, password, uid, privateKey },
         {
           headers: getAuthHeaders()
         }

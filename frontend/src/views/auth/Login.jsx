@@ -121,22 +121,6 @@ const LoginV2 = ({ mode }) => {
   const hidden = useMediaQuery(theme.breakpoints.down('md'))
   const authBackground = useImageVariant(mode, lightImg, darkImg)
 
-    // const checkLogin = async ()=>{
-  
-    //   const  response  = await axios.get(`${baseURL}/api/admin/login`);
-  
-    //   if(response.data.login){
-    //      router.replace('/login')
-    //   }else{
-    //      router.replace('/register')
-    //   }
-    // }
-
-    // useEffect(()=>{
-    //   checkLogin()
-    // },[])
-  
-
   // Form Handling
   const {
     register,

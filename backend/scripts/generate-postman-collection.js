@@ -51,8 +51,9 @@ const ROUTE_BODY_OVERRIDES = {
 }
 
 const MANUAL_ADMIN_ROOT_ROUTES = [
-  { method: 'POST', path: '/initiateAdminRegistration', auth: 'key', body: { email: '', password: '', uid: '', code: '', privateKey: {} } },
+  { method: 'POST', path: '/initiateAdminRegistration', auth: 'key', body: { email: '', password: '', uid: '', privateKey: {} } },
   { method: 'POST', path: '/authenticateAdmin', auth: 'admin', body: { email: '', password: '' } },
+  { method: 'POST', path: '/createAdmin', auth: 'admin', body: { email: '', password: '', name: '' } },
   { method: 'PATCH', path: '/updateProfileDetails', auth: 'admin', formdata: true },
   { method: 'PATCH', path: '/updatePassword', auth: 'admin', body: { oldPass: '', newPass: '', confirmPass: '' } },
   { method: 'GET', path: '/initiatePasswordReset', auth: 'key', query: { email: '' } },
@@ -62,7 +63,6 @@ const MANUAL_ADMIN_ROOT_ROUTES = [
 ]
 
 const MANUAL_SETTING_ROUTES = [
-  { method: 'GET', path: '/verifyPurchaseCode', auth: 'admin' },
   { method: 'PATCH', path: '/modifySetting', auth: 'admin', body: { settingId: '' } },
   { method: 'PATCH', path: '/toggleAppSetting', auth: 'admin', query: { settingId: '', type: '' } },
   { method: 'GET', path: '/getSettingsData', auth: 'admin' }
