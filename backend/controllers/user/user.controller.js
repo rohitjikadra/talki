@@ -39,6 +39,9 @@ const { detectIdentifier, normalizePhoneDigits, isSamePhone, resolveDialCode } =
 // first_name + last_name → fullName (request fullName ignored)
 const { resolveNameFields, hasRequiredNames } = require("../../util/resolveNameFields");
 
+// Pre-register OTP verification ticks
+const { assertEmailAndMobileVerified } = require("../../util/otpService");
+
 
 //check the user is exists or not (email OR mobile via identifier)
 exports.verifyUserExistence = async (req, res) => {
@@ -286,7 +289,15 @@ exports.authenticateOrRegisterUser = async (req, res) => {
       return res.status(200).json({ status: false, message: "Invalid countryCode. Use ISO code like IN." });
     }
 
+    // Register only after email + mobile OTP verification ticks are valid
+    const otpGate = await assertEmailAndMobileVerified(registerEmail, registerPhone, registerCountryCode);
+    if (!otpGate.ok) {
+      if (req.file) deleteFile(req.file);
+      return res.status(200).json({ status: false, message: otpGate.message });
+    }
+
     // Token must match at least one of email/phone from Firebase auth used during register
+    // (Firebase auth token kept for now; can be removed later)
     const emailTokenOk = tokenEmail && tokenEmail.toLowerCase() === registerEmail;
     const phoneTokenOk = tokenPhone && isSamePhone(tokenPhone, registerCountryCode, registerPhone);
     if (!emailTokenOk && !phoneTokenOk) {

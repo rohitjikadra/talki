@@ -18,11 +18,18 @@ const validateUserAuthToken = require("../../middleware/validateUserAuthToken.mi
 
 //controller
 const UserController = require("../../controllers/user/user.controller");
+const OtpController = require("../../controllers/user/otp.controller");
 
 //check the user is exists or not ( quick or email-password )
 route.post("/verifyUserExistence", checkAccessWithSecretKey(), UserController.verifyUserExistence);
 
-//user login or sign up
+// ---- Pre-register OTP (provider-agnostic; currently console sender) ----
+route.post("/sendEmailOtp", checkAccessWithSecretKey(), OtpController.sendEmailOtp);
+route.post("/verifyEmailOtp", checkAccessWithSecretKey(), OtpController.verifyEmailOtp);
+route.post("/sendMobileOtp", checkAccessWithSecretKey(), OtpController.sendMobileOtp);
+route.post("/verifyMobileOtp", checkAccessWithSecretKey(), OtpController.verifyMobileOtp);
+
+//user login or sign up (Firebase token still required for now)
 route.post("/authenticateOrRegisterUser", verifyAuthToken, checkAccessWithSecretKey(), UserController.authenticateOrRegisterUser);
 
 //update user's profile
